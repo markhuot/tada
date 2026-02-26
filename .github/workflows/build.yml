@@ -17,11 +17,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - runner: macos-14
-            arch: arm64
-          - runner: macos-13
-            arch: x64
-    runs-on: ${{ matrix.runner }}
+          - arch: arm64
+          - arch: x64
+    runs-on: macos-14
     name: Build (macOS ${{ matrix.arch }})
     steps:
       - uses: actions/checkout@v4
@@ -43,6 +41,7 @@ jobs:
         run: bun run build.ts
         env:
           PACKAGE_VERSION: ${{ steps.version.outputs.version }}
+          TARGET_ARCH: ${{ matrix.arch }}
 
       - name: Verify binary
         run: file dist/tada

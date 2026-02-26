@@ -9,6 +9,9 @@ const SWIFT_SOURCE = join(ROOT, "confetti.swift");
 const CONFETTI_BINARY = join(DIST, "confetti");
 const TADA_BINARY = join(DIST, "tada");
 
+// Allow cross-compilation via TARGET_ARCH env var (e.g. "x64" on an arm64 host)
+const targetArch = process.env.TARGET_ARCH || arch();
+
 async function build() {
   // Ensure dist directory exists
   if (!existsSync(DIST)) {
@@ -16,9 +19,14 @@ async function build() {
   }
 
   // Step 1: Compile the Swift overlay
-  console.log("Compiling confetti.swift...");
+  const swiftTarget =
+    targetArch === "arm64"
+      ? "arm64-apple-macosx13.0"
+      : "x86_64-apple-macosx13.0";
+
+  console.log(`Compiling confetti.swift (target: ${swiftTarget})...`);
   const compile =
-    await $`swiftc ${SWIFT_SOURCE} -o ${CONFETTI_BINARY} -framework Cocoa -framework QuartzCore -O`.quiet();
+    await $`swiftc ${SWIFT_SOURCE} -o ${CONFETTI_BINARY} -target ${swiftTarget} -framework Cocoa -framework QuartzCore -O`.quiet();
 
   if (compile.exitCode !== 0) {
     console.error("Failed to compile confetti.swift:");
@@ -28,13 +36,11 @@ async function build() {
   console.log(`  -> ${CONFETTI_BINARY}`);
 
   // Step 2: Build the Bun single-file executable with the confetti binary embedded
-  const currentArch = arch();
-  const target =
-    currentArch === "arm64" ? "bun-darwin-arm64" : "bun-darwin-x64";
+  const bunTarget = `bun-darwin-${targetArch}`;
 
-  console.log(`Building tada executable (${target})...`);
+  console.log(`Building tada executable (${bunTarget})...`);
   const bunBuild =
-    await $`bun build --compile --target=${target} ${join(ROOT, "index.ts")} --outfile ${TADA_BINARY}`.quiet();
+    await $`bun build --compile --target=${bunTarget} ${join(ROOT, "index.ts")} --outfile ${TADA_BINARY}`.quiet();
 
   if (bunBuild.exitCode !== 0) {
     console.error("Failed to build tada:");
@@ -45,8 +51,8 @@ async function build() {
 
   // Step 3: Assemble the platform-specific npm package
   const version = process.env.PACKAGE_VERSION || "0.0.1";
-  const platformPkgName = `@markhuot/tada-darwin-${currentArch}`;
-  const platformPkgDir = join(DIST, `tada-darwin-${currentArch}`);
+  const platformPkgName = `@markhuot/tada-darwin-${targetArch}`;
+  const platformPkgDir = join(DIST, `tada-darwin-${targetArch}`);
   const platformBinDir = join(platformPkgDir, "bin");
 
   mkdirSync(platformBinDir, { recursive: true });
@@ -58,9 +64,9 @@ async function build() {
   const platformPkg = {
     name: platformPkgName,
     version,
-    description: `tada binary for macOS ${currentArch}`,
+    description: `tada binary for macOS ${targetArch}`,
     os: ["darwin"],
-    cpu: [currentArch],
+    cpu: [targetArch],
     bin: {
       tada: "bin/tada",
     },
