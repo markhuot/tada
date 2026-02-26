@@ -65,6 +65,10 @@ async function build() {
     name: platformPkgName,
     version,
     description: `tada binary for macOS ${targetArch}`,
+    repository: {
+      type: "git",
+      url: "https://github.com/markhuot/tada.git",
+    },
     os: ["darwin"],
     cpu: [targetArch],
     bin: {
