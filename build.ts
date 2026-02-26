@@ -1,5 +1,5 @@
 import { $ } from "bun";
-import { existsSync, mkdirSync, copyFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, copyFileSync, writeFileSync, chmodSync } from "fs";
 import { join } from "path";
 import { arch } from "os";
 
@@ -57,8 +57,10 @@ async function build() {
 
   mkdirSync(platformBinDir, { recursive: true });
 
-  // Copy the built binary into the platform package
-  copyFileSync(TADA_BINARY, join(platformBinDir, "tada"));
+  // Copy the built binary into the platform package and ensure it's executable
+  const platformBinaryPath = join(platformBinDir, "tada");
+  copyFileSync(TADA_BINARY, platformBinaryPath);
+  chmodSync(platformBinaryPath, 0o755);
 
   // Write the platform package.json
   const platformPkg = {
