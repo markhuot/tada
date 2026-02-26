@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const { execFileSync } = require("child_process");
+const { chmodSync } = require("fs");
 const { arch, platform } = require("os");
 const path = require("path");
 
@@ -26,6 +27,11 @@ try {
   );
   process.exit(1);
 }
+
+try {
+  // Ensure the binary is executable — npm/bun may strip permissions from tarballs
+  chmodSync(binaryPath, 0o755);
+} catch {}
 
 try {
   execFileSync(binaryPath, process.argv.slice(2), { stdio: "inherit" });
