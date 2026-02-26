@@ -1,0 +1,117 @@
+name: Build & Publish
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g. 0.0.1)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - runner: macos-14
+            arch: arm64
+          - runner: macos-13
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    name: Build (macOS ${{ matrix.arch }})
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        run: bun run build.ts
+        env:
+          PACKAGE_VERSION: ${{ steps.version.outputs.version }}
+
+      - name: Verify binary
+        run: file dist/tada
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tada-darwin-${{ matrix.arch }}
+          path: dist/tada-darwin-${{ matrix.arch }}
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    name: Publish to npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tada-darwin-arm64
+          path: dist/tada-darwin-arm64
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tada-darwin-x64
+          path: dist/tada-darwin-x64
+
+      - name: Verify artifacts
+        run: |
+          ls -lhR dist/
+          file dist/tada-darwin-arm64/bin/tada
+          file dist/tada-darwin-x64/bin/tada
+
+      - name: Publish @markhuot/tada-darwin-arm64
+        working-directory: dist/tada-darwin-arm64
+        run: npm publish --access public --provenance
+
+      - name: Publish @markhuot/tada-darwin-x64
+        working-directory: dist/tada-darwin-x64
+        run: npm publish --access public --provenance
+
+      - name: Set wrapper package version
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          # Update the version in both the root package.json and optionalDependencies
+          node -e "
+            const pkg = require('./package.json');
+            pkg.version = '${VERSION}';
+            pkg.optionalDependencies['@markhuot/tada-darwin-arm64'] = '${VERSION}';
+            pkg.optionalDependencies['@markhuot/tada-darwin-x64'] = '${VERSION}';
+            require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          cat package.json
+
+      - name: Publish @markhuot/tada
+        run: npm publish --access public --provenance

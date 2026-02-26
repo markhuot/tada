@@ -1,0 +1,13 @@
+{
+  "name": "@markhuot/tada",
+  "version": "0.0.1",
+  "description": "Display confetti on your screen",
+  "bin": {
+    "tada": "bin/tada"
+  },
+  "optionalDependencies": {
+    "@markhuot/tada-darwin-arm64": "0.0.1",
+    "@markhuot/tada-darwin-x64": "0.0.1"
+  },
+  "license": "MIT"
+}

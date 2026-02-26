@@ -1,0 +1,37 @@
+#!/usr/bin/env node
+
+const { execFileSync } = require("child_process");
+const { arch, platform } = require("os");
+const path = require("path");
+
+if (platform() !== "darwin") {
+  console.error("tada: only macOS is supported");
+  process.exit(1);
+}
+
+const cpu = arch();
+const packageName = `@markhuot/tada-darwin-${cpu}`;
+
+let binaryPath;
+try {
+  binaryPath = path.join(
+    path.dirname(require.resolve(`${packageName}/package.json`)),
+    "bin",
+    "tada"
+  );
+} catch {
+  console.error(
+    `tada: could not find platform package ${packageName}.\n` +
+      `Make sure optional dependencies are installed (try: npm install).`
+  );
+  process.exit(1);
+}
+
+try {
+  execFileSync(binaryPath, process.argv.slice(2), { stdio: "inherit" });
+} catch (e) {
+  if (e.status !== null) {
+    process.exit(e.status);
+  }
+  throw e;
+}
