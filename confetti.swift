@@ -110,6 +110,148 @@ func makeBalloonImage(width: CGFloat, height: CGFloat, color: NSColor) -> CGImag
     return ctx.makeImage()
 }
 
+func makeFlamePath(width: CGFloat, height: CGFloat) -> CGPath {
+    let tipX = width * CGFloat.random(in: 0.44...0.56)
+    let baseLeftX = width * CGFloat.random(in: 0.04...0.16)
+    let baseRightX = width * CGFloat.random(in: 0.84...0.96)
+    let waistY = height * CGFloat.random(in: 0.36...0.5)
+
+    let path = CGMutablePath()
+    path.move(to: CGPoint(x: baseLeftX, y: 0))
+    path.addLine(to: CGPoint(x: baseRightX, y: 0))
+    path.addCurve(
+        to: CGPoint(x: tipX, y: height),
+        control1: CGPoint(x: width * CGFloat.random(in: 0.96...1.1), y: height * CGFloat.random(in: 0.24...0.4)),
+        control2: CGPoint(x: width * CGFloat.random(in: 0.62...0.74), y: height * CGFloat.random(in: 0.9...1.0))
+    )
+    path.addCurve(
+        to: CGPoint(x: baseLeftX, y: 0),
+        control1: CGPoint(x: width * CGFloat.random(in: 0.36...0.48), y: height * CGFloat.random(in: 0.9...1.0)),
+        control2: CGPoint(x: width * CGFloat.random(in: -0.1...0.04), y: height * CGFloat.random(in: 0.24...0.4))
+    )
+    path.closeSubpath()
+    return path
+}
+
+func spawnVectorFlame(
+    in parentLayer: CALayer,
+    x: CGFloat,
+    baseY: CGFloat,
+    size: CGSize,
+    color: NSColor,
+    delay: CFTimeInterval
+) {
+    let beginTime = CACurrentMediaTime() + delay
+    let duration = CFTimeInterval(CGFloat.random(in: 1.2...1.8))
+    let driftA = CGFloat.random(in: -28...28)
+    let driftB = CGFloat.random(in: -46...46)
+
+    let flame = CAShapeLayer()
+    flame.bounds = CGRect(x: 0, y: 0, width: size.width, height: size.height)
+    flame.anchorPoint = CGPoint(x: 0.5, y: 0.0)
+    flame.position = CGPoint(x: x, y: baseY)
+    flame.fillColor = color.withAlphaComponent(0.72).cgColor
+    flame.opacity = 0
+    flame.shadowColor = NSColor(calibratedRed: 1.0, green: 0.45, blue: 0.05, alpha: 0.8).cgColor
+    flame.shadowOpacity = 0.35
+    flame.shadowRadius = 8
+    flame.shadowOffset = CGSize(width: 0, height: 0)
+
+    let pathA = makeFlamePath(width: size.width, height: size.height)
+    let pathB = makeFlamePath(width: size.width, height: size.height)
+    let pathC = makeFlamePath(width: size.width, height: size.height)
+    let pathD = makeFlamePath(width: size.width, height: size.height)
+    flame.path = pathA
+
+    let core = CAShapeLayer()
+    core.frame = flame.bounds.insetBy(dx: size.width * 0.2, dy: size.height * 0.14)
+    core.fillColor = NSColor(calibratedRed: 1.0, green: 0.95, blue: 0.78, alpha: 0.4).cgColor
+    let corePathA = makeFlamePath(width: core.bounds.width, height: core.bounds.height)
+    let corePathB = makeFlamePath(width: core.bounds.width, height: core.bounds.height)
+    let corePathC = makeFlamePath(width: core.bounds.width, height: core.bounds.height)
+    core.path = corePathA
+
+    flame.addSublayer(core)
+    parentLayer.addSublayer(flame)
+
+    let positionAnim = CAKeyframeAnimation(keyPath: "position.x")
+    positionAnim.values = [x, x + driftA, x + driftB]
+    positionAnim.keyTimes = [0, 0.7, 1]
+    positionAnim.duration = duration
+    positionAnim.beginTime = beginTime
+    positionAnim.timingFunctions = [
+        CAMediaTimingFunction(name: .easeOut),
+        CAMediaTimingFunction(name: .easeIn)
+    ]
+    positionAnim.fillMode = .forwards
+    positionAnim.isRemovedOnCompletion = false
+
+    let opacityAnim = CAKeyframeAnimation(keyPath: "opacity")
+    opacityAnim.values = [0, 0.78, 0.5, 0]
+    opacityAnim.keyTimes = [0, 0.12, 0.62, 1]
+    opacityAnim.duration = duration
+    opacityAnim.beginTime = beginTime
+    opacityAnim.fillMode = .forwards
+    opacityAnim.isRemovedOnCompletion = false
+
+    let transformAnim = CAKeyframeAnimation(keyPath: "transform")
+    let t0 = CATransform3DMakeAffineTransform(CGAffineTransform(a: 1.0, b: 0.0, c: 0.0, d: 0.65, tx: 0.0, ty: 0.0))
+    let t1 = CATransform3DMakeAffineTransform(CGAffineTransform(a: 0.92, b: 0.0, c: CGFloat.random(in: -0.16...0.16), d: 1.22, tx: 0.0, ty: 0.0))
+    let t2 = CATransform3DMakeAffineTransform(CGAffineTransform(a: 1.1, b: 0.0, c: CGFloat.random(in: -0.22...0.22), d: 1.55, tx: 0.0, ty: 0.0))
+    let t3 = CATransform3DMakeAffineTransform(CGAffineTransform(a: 0.86, b: 0.0, c: CGFloat.random(in: -0.18...0.18), d: 0.78, tx: 0.0, ty: 0.0))
+    transformAnim.values = [
+        NSValue(caTransform3D: t0),
+        NSValue(caTransform3D: t1),
+        NSValue(caTransform3D: t2),
+        NSValue(caTransform3D: t3)
+    ]
+    transformAnim.keyTimes = [0, 0.25, 0.72, 1]
+    transformAnim.duration = duration
+    transformAnim.beginTime = beginTime
+    transformAnim.timingFunctions = [
+        CAMediaTimingFunction(name: .easeOut),
+        CAMediaTimingFunction(name: .easeInEaseOut),
+        CAMediaTimingFunction(name: .easeIn)
+    ]
+    transformAnim.fillMode = .forwards
+    transformAnim.isRemovedOnCompletion = false
+
+    let rotateAnim = CAKeyframeAnimation(keyPath: "transform.rotation.z")
+    rotateAnim.values = [0, CGFloat.random(in: -0.14...0.14), CGFloat.random(in: -0.2...0.2)]
+    rotateAnim.keyTimes = [0, 0.5, 1]
+    rotateAnim.duration = duration
+    rotateAnim.beginTime = beginTime
+    rotateAnim.fillMode = .forwards
+    rotateAnim.isRemovedOnCompletion = false
+
+    let morphAnim = CAKeyframeAnimation(keyPath: "path")
+    morphAnim.values = [pathA, pathB, pathC, pathD, pathA]
+    morphAnim.keyTimes = [0, 0.25, 0.5, 0.75, 1]
+    morphAnim.duration = 0.26
+    morphAnim.repeatCount = Float(duration / 0.26) + 1
+    morphAnim.beginTime = beginTime
+    morphAnim.calculationMode = .linear
+
+    let coreMorphAnim = CAKeyframeAnimation(keyPath: "path")
+    coreMorphAnim.values = [corePathA, corePathB, corePathC, corePathA]
+    coreMorphAnim.keyTimes = [0, 0.33, 0.66, 1]
+    coreMorphAnim.duration = 0.22
+    coreMorphAnim.repeatCount = Float(duration / 0.22) + 1
+    coreMorphAnim.beginTime = beginTime
+    coreMorphAnim.calculationMode = .linear
+
+    flame.add(positionAnim, forKey: "rise")
+    flame.add(opacityAnim, forKey: "fade")
+    flame.add(transformAnim, forKey: "shape")
+    flame.add(rotateAnim, forKey: "rotate")
+    flame.add(morphAnim, forKey: "morph")
+    core.add(coreMorphAnim, forKey: "coreMorph")
+
+    DispatchQueue.main.asyncAfter(deadline: .now() + delay + duration + 0.1) {
+        flame.removeFromSuperlayer()
+    }
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate {
     var window: ConfettiWindow!
     var exitTimer: Timer?
@@ -117,6 +259,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     enum ParticleMode {
         case confetti
         case balloons
+        case fire
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -125,7 +268,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let args = Set(CommandLine.arguments.dropFirst())
         let mode: ParticleMode
         if args.contains("--random") {
-            mode = Bool.random() ? .balloons : .confetti
+            let modes: [ParticleMode] = [.confetti, .balloons, .fire]
+            mode = modes.randomElement() ?? .confetti
+        } else if args.contains("--fire") {
+            mode = .fire
         } else if args.contains("--confetti") {
             mode = .confetti
         } else if args.contains("--balloons") {
@@ -135,6 +281,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let launchBalloons = mode == .balloons
+        let launchFire = mode == .fire
 
         let screen = NSScreen.main!
         let frame = screen.frame
@@ -161,12 +308,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let emitter = CAEmitterLayer()
-        emitter.emitterPosition = CGPoint(x: frame.width / 2, y: -20)  // Slightly below screen
+        emitter.emitterPosition = CGPoint(x: frame.width / 2, y: -20)
         emitter.emitterSize = CGSize(width: frame.width, height: 1)
         emitter.emitterShape = .line
         emitter.renderMode = .oldestLast
         emitter.frame = CGRect(origin: .zero, size: frame.size)
-        emitter.beginTime = CACurrentMediaTime()  // Start fresh, no pre-simulation
+        emitter.beginTime = CACurrentMediaTime()
 
         let colors: [(CGFloat, CGFloat, CGFloat)] = [
             (1.0, 0.2, 0.3),   // Red
@@ -209,6 +356,79 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     cell.yAcceleration = 110
                     cell.contents = image
                     cells.append(cell)
+                }
+            }
+        } else if launchFire {
+            let flameColors: [NSColor] = [
+                NSColor(calibratedRed: 1.0, green: 0.95, blue: 0.5, alpha: 1.0),
+                NSColor(calibratedRed: 1.0, green: 0.72, blue: 0.18, alpha: 1.0),
+                NSColor(calibratedRed: 1.0, green: 0.5, blue: 0.08, alpha: 1.0),
+                NSColor(calibratedRed: 0.95, green: 0.28, blue: 0.04, alpha: 1.0),
+                NSColor(calibratedRed: 0.78, green: 0.08, blue: 0.02, alpha: 0.9),
+            ]
+
+            let fireLayer = CALayer()
+            fireLayer.frame = CGRect(origin: .zero, size: frame.size)
+            layer.addSublayer(fireLayer)
+
+            let emberBed = CAGradientLayer()
+            emberBed.frame = CGRect(x: 0, y: -10, width: frame.width, height: 68)
+            emberBed.colors = [
+                NSColor(calibratedRed: 1.0, green: 0.44, blue: 0.04, alpha: 0.62).cgColor,
+                NSColor(calibratedRed: 0.95, green: 0.22, blue: 0.03, alpha: 0.35).cgColor,
+                NSColor.clear.cgColor,
+            ]
+            emberBed.locations = [0.0, 0.38, 1.0]
+            emberBed.startPoint = CGPoint(x: 0.5, y: 0.0)
+            emberBed.endPoint = CGPoint(x: 0.5, y: 1.0)
+            fireLayer.addSublayer(emberBed)
+
+            let emberCore = CALayer()
+            emberCore.frame = CGRect(x: 0, y: -3, width: frame.width, height: 12)
+            emberCore.backgroundColor = NSColor(calibratedRed: 1.0, green: 0.3, blue: 0.03, alpha: 0.42).cgColor
+            fireLayer.addSublayer(emberCore)
+
+            let emberFlicker = CAKeyframeAnimation(keyPath: "opacity")
+            emberFlicker.values = [0.75, 0.95, 0.7, 0.88, 0.76]
+            emberFlicker.keyTimes = [0, 0.2, 0.45, 0.75, 1]
+            emberFlicker.duration = 0.24
+            emberFlicker.repeatCount = 18
+            emberBed.add(emberFlicker, forKey: "emberFlicker")
+
+            let burstDuration: TimeInterval = 1.0
+            let tick: TimeInterval = 1.0 / 20.0
+            let startTime = CACurrentMediaTime()
+            let columns = max(14, Int(frame.width / 90))
+
+            Timer.scheduledTimer(withTimeInterval: tick, repeats: true) { timer in
+                let elapsed = CACurrentMediaTime() - startTime
+                if elapsed >= burstDuration {
+                    timer.invalidate()
+                    return
+                }
+
+                let remaining = max(0, 1.0 - (elapsed / burstDuration))
+                let intensity = CGFloat(pow(remaining, 0.85))
+                let flamesThisTick = max(1, Int(CGFloat(columns) * (0.0375 + intensity * 0.079)))
+
+                for _ in 0..<flamesThisTick {
+                    let x = CGFloat.random(in: 0...frame.width)
+                    let baseY = CGFloat.random(in: -2...2)
+                    let size = CGSize(
+                        width: CGFloat.random(in: 144...378),
+                        height: CGFloat.random(in: 216...576)
+                    )
+                    let color = flameColors.randomElement() ?? flameColors[0]
+                    let delay = CFTimeInterval(CGFloat.random(in: 0...0.07))
+
+                    spawnVectorFlame(
+                        in: fireLayer,
+                        x: x,
+                        baseY: baseY,
+                        size: size,
+                        color: color,
+                        delay: delay
+                    )
                 }
             }
         } else {
@@ -267,27 +487,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        emitter.emitterCells = cells
-        layer.addSublayer(emitter)
+        if !launchFire {
+            emitter.emitterCells = cells
+            layer.addSublayer(emitter)
+        }
 
         window.orderFrontRegardless()
 
-        // Gradually reduce the emitter's birthRate multiplier for a soft ending.
-        // Use an exponential curve so most particles stop early, but a few linger.
-        let steps = 12
-        let rampStart = 0.1
-        let rampEnd = 0.8
-        for i in 0...steps {
-            let t = Double(i) / Double(steps)
-            // Exponential: most of the reduction happens early
-            let rate = Float(pow(1.0 - t, 2.5))
-            let delay = rampStart + (rampEnd - rampStart) * t
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                emitter.birthRate = rate
+        if !launchFire {
+            // Gradually reduce the emitter's birthRate multiplier for a soft ending.
+            // Use an exponential curve so most particles stop early, but a few linger.
+            let steps = 12
+            let rampStart = 0.1
+            let rampEnd = 0.8
+            for i in 0...steps {
+                let t = Double(i) / Double(steps)
+                let rate = Float(pow(1.0 - t, 2.5))
+                let delay = rampStart + (rampEnd - rampStart) * t
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    emitter.birthRate = rate
+                }
             }
         }
 
-        let exitDelay = launchBalloons ? 8.0 : 5.0
+        let exitDelay = launchFire ? 3.0 : (launchBalloons ? 8.0 : 5.0)
         exitTimer = Timer.scheduledTimer(withTimeInterval: exitDelay, repeats: false) { _ in
             NSApp.terminate(nil)
         }

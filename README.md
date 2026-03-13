@@ -14,7 +14,8 @@ Available particle mode flags:
 
 - `--confetti` Force confetti mode.
 - `--balloons` Launch floating balloon particles instead of confetti.
-- `--random` Randomly choose confetti or balloons for each run.
+- `--fire` Launch a one-second flame burst that burns out quickly.
+- `--random` Randomly choose confetti, balloons, or fire for each run.
 
 If no particle flag is provided, the default is `--confetti` behavior.
 
