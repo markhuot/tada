@@ -42,12 +42,99 @@ func makeConfettiImage(width: CGFloat, height: CGFloat, color: NSColor) -> CGIma
     return ctx.makeImage()
 }
 
+func makeBalloonImage(width: CGFloat, height: CGFloat, color: NSColor) -> CGImage? {
+    let colorSpace = CGColorSpaceCreateDeviceRGB()
+    guard let ctx = CGContext(
+        data: nil,
+        width: Int(width),
+        height: Int(height),
+        bitsPerComponent: 8,
+        bytesPerRow: 0,
+        space: colorSpace,
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ) else { return nil }
+
+    let bodyRect = CGRect(x: 2, y: 10, width: width - 4, height: height - 14)
+
+    let horizontalSign: CGFloat = Bool.random() ? -1.0 : 1.0
+    let horizontalMagnitude = CGFloat.random(in: bodyRect.width * 0.04...bodyRect.width * 0.18)
+    let centerX = bodyRect.midX + (horizontalSign * horizontalMagnitude)
+    let centerY = bodyRect.midY + CGFloat.random(in: bodyRect.height * 0.10...bodyRect.height * 0.28)
+    let gradientCenter = CGPoint(x: centerX, y: centerY)
+    let gradientRadius = max(bodyRect.width, bodyRect.height) * 0.95
+
+    let core = color.blended(withFraction: 0.35, of: .white) ?? color
+    let edge = color.blended(withFraction: 0.35, of: .black) ?? color
+
+    if let gradient = CGGradient(
+        colorsSpace: colorSpace,
+        colors: [core.cgColor, color.cgColor, edge.cgColor] as CFArray,
+        locations: [0.0, 0.55, 1.0]
+    ) {
+        ctx.saveGState()
+        ctx.addEllipse(in: bodyRect)
+        ctx.clip()
+        ctx.drawRadialGradient(
+            gradient,
+            startCenter: gradientCenter,
+            startRadius: 1.0,
+            endCenter: CGPoint(x: bodyRect.midX, y: bodyRect.midY),
+            endRadius: gradientRadius,
+            options: [.drawsAfterEndLocation]
+        )
+        ctx.restoreGState()
+    } else {
+        ctx.setFillColor(color.cgColor)
+        ctx.fillEllipse(in: bodyRect)
+    }
+
+    ctx.setFillColor(color.blended(withFraction: 0.2, of: .black)?.cgColor ?? color.cgColor)
+    ctx.beginPath()
+    ctx.move(to: CGPoint(x: width / 2 - 2, y: 10))
+    ctx.addLine(to: CGPoint(x: width / 2 + 2, y: 10))
+    ctx.addLine(to: CGPoint(x: width / 2, y: 6))
+    ctx.closePath()
+    ctx.fillPath()
+
+    ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.45).cgColor)
+    ctx.setLineWidth(1.0)
+    ctx.beginPath()
+    ctx.move(to: CGPoint(x: width / 2, y: 6))
+    ctx.addCurve(
+        to: CGPoint(x: width / 2 - 3, y: 0),
+        control1: CGPoint(x: width / 2 + 2, y: 4),
+        control2: CGPoint(x: width / 2 - 4, y: 2)
+    )
+    ctx.strokePath()
+
+    return ctx.makeImage()
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate {
     var window: ConfettiWindow!
     var exitTimer: Timer?
 
+    enum ParticleMode {
+        case confetti
+        case balloons
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+
+        let args = Set(CommandLine.arguments.dropFirst())
+        let mode: ParticleMode
+        if args.contains("--random") {
+            mode = Bool.random() ? .balloons : .confetti
+        } else if args.contains("--confetti") {
+            mode = .confetti
+        } else if args.contains("--balloons") {
+            mode = .balloons
+        } else {
+            mode = .confetti
+        }
+
+        let launchBalloons = mode == .balloons
 
         let screen = NSScreen.main!
         let frame = screen.frame
@@ -73,30 +160,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // Calculate physics values so confetti peaks at ~75% of screen height.
-        //
-        // In this coordinate system (determined experimentally):
-        //   emissionLongitude = π  → upward
-        //   emissionLongitude = 0  → downward
-        //   negative yAcceleration → pulls particles downward (gravity)
-        //
-        // Kinematics: peak height h = v² / (2 * |a|)
-        // So: v = sqrt(2 * |a| * h)
-        let targetHeight = frame.height * 0.75
-        let gravity: CGFloat = 3200  // acceleration magnitude (pts/s²)
-        let baseVelocity = sqrt(2.0 * gravity * targetHeight)  // ~1200 for a 1440p screen
-
-        // Calculate birth rate so total particles ≈ screen width (1 particle per pixel)
-        // Total cells = 8 colors × 2 shapes = 16
-        // Total particles = birthRate × emissionDuration × numCells
-        // birthRate = totalParticles / (emissionDuration × numCells)
-        let emissionDuration: CGFloat = 1.5
-        let numColors: CGFloat = 8
-        let numShapes: CGFloat = 2
-        let totalCells = numColors * numShapes
-        let targetParticles = frame.width / 2  // 1 particle per 2 pixels of width
-        let birthRatePerCell = Float(targetParticles / (emissionDuration * totalCells))
-
         let emitter = CAEmitterLayer()
         emitter.emitterPosition = CGPoint(x: frame.width / 2, y: -20)  // Slightly below screen
         emitter.emitterSize = CGSize(width: frame.width, height: 1)
@@ -116,51 +179,91 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             (0.0, 0.9, 0.9),   // Cyan
         ]
 
+        let emissionDuration: CGFloat = 1.5
+        let numColors: CGFloat = 8
         var cells: [CAEmitterCell] = []
 
-        for (r, g, b) in colors {
-            let color = NSColor(calibratedRed: r, green: g, blue: b, alpha: 1.0)
+        if launchBalloons {
+            let numShapes: CGFloat = 1
+            let totalCells = numColors * numShapes
+            let targetParticles = frame.width / 12
+            let birthRatePerCell = Float(targetParticles / (emissionDuration * totalCells))
 
-            // Rectangle confetti
-            if let image = makeConfettiImage(width: 12, height: 8, color: color) {
-                let cell = CAEmitterCell()
-                cell.birthRate = birthRatePerCell
-                cell.lifetime = 5.0
-                cell.lifetimeRange = 1.5
-                cell.velocity = baseVelocity * 0.7   // Center the range
-                cell.velocityRange = baseVelocity * 0.6  // Wide range: ~10% to ~75% screen height
-                cell.emissionLongitude = CGFloat.pi  // Upward
-                cell.emissionRange = CGFloat.pi / 8  // Tight cone
-                cell.spin = 2.0
-                cell.spinRange = 4.0
-                cell.scale = 1.0
-                cell.scaleRange = 0.5
-                cell.color = CGColor.white
-                cell.alphaSpeed = -0.2
-                cell.yAcceleration = -gravity
-                cell.contents = image
-                cells.append(cell)
+            for (r, g, b) in colors {
+                let color = NSColor(calibratedRed: r, green: g, blue: b, alpha: 0.7)
+                if let image = makeBalloonImage(width: 120, height: 180, color: color) {
+                    let cell = CAEmitterCell()
+                    cell.birthRate = birthRatePerCell
+                    cell.lifetime = 7.0
+                    cell.lifetimeRange = 1.5
+                    cell.velocity = 990
+                    cell.velocityRange = 810
+                    cell.emissionLongitude = CGFloat.pi
+                    cell.emissionRange = CGFloat.pi / 12
+                    cell.spin = 0.0
+                    cell.spinRange = 1.8
+                    cell.scale = 1.0
+                    cell.scaleRange = 0.35
+                    cell.color = CGColor.white
+                    cell.alphaSpeed = -0.03
+                    cell.yAcceleration = 110
+                    cell.contents = image
+                    cells.append(cell)
+                }
             }
+        } else {
+            // Calculate physics values so confetti peaks at ~75% of screen height.
+            let targetHeight = frame.height * 0.75
+            let gravity: CGFloat = 3200
+            let baseVelocity = sqrt(2.0 * gravity * targetHeight)
 
-            // Smaller square confetti
-            if let image = makeConfettiImage(width: 8, height: 8, color: color) {
-                let cell = CAEmitterCell()
-                cell.birthRate = birthRatePerCell
-                cell.lifetime = 5.0
-                cell.lifetimeRange = 1.5
-                cell.velocity = baseVelocity * 0.6
-                cell.velocityRange = baseVelocity * 0.55  // Wide range for variety
-                cell.emissionLongitude = CGFloat.pi  // Upward
-                cell.emissionRange = CGFloat.pi / 6  // Slightly wider cone
-                cell.spin = 3.0
-                cell.spinRange = 5.0
-                cell.scale = 0.8
-                cell.scaleRange = 0.4
-                cell.color = CGColor.white
-                cell.alphaSpeed = -0.15
-                cell.yAcceleration = -gravity * 0.85
-                cell.contents = image
-                cells.append(cell)
+            let numShapes: CGFloat = 2
+            let totalCells = numColors * numShapes
+            let targetParticles = frame.width / 2
+            let birthRatePerCell = Float(targetParticles / (emissionDuration * totalCells))
+
+            for (r, g, b) in colors {
+                let color = NSColor(calibratedRed: r, green: g, blue: b, alpha: 1.0)
+
+                if let image = makeConfettiImage(width: 12, height: 8, color: color) {
+                    let cell = CAEmitterCell()
+                    cell.birthRate = birthRatePerCell
+                    cell.lifetime = 5.0
+                    cell.lifetimeRange = 1.5
+                    cell.velocity = baseVelocity * 0.7
+                    cell.velocityRange = baseVelocity * 0.6
+                    cell.emissionLongitude = CGFloat.pi
+                    cell.emissionRange = CGFloat.pi / 8
+                    cell.spin = 2.0
+                    cell.spinRange = 4.0
+                    cell.scale = 1.0
+                    cell.scaleRange = 0.5
+                    cell.color = CGColor.white
+                    cell.alphaSpeed = -0.2
+                    cell.yAcceleration = -gravity
+                    cell.contents = image
+                    cells.append(cell)
+                }
+
+                if let image = makeConfettiImage(width: 8, height: 8, color: color) {
+                    let cell = CAEmitterCell()
+                    cell.birthRate = birthRatePerCell
+                    cell.lifetime = 5.0
+                    cell.lifetimeRange = 1.5
+                    cell.velocity = baseVelocity * 0.6
+                    cell.velocityRange = baseVelocity * 0.55
+                    cell.emissionLongitude = CGFloat.pi
+                    cell.emissionRange = CGFloat.pi / 6
+                    cell.spin = 3.0
+                    cell.spinRange = 5.0
+                    cell.scale = 0.8
+                    cell.scaleRange = 0.4
+                    cell.color = CGColor.white
+                    cell.alphaSpeed = -0.15
+                    cell.yAcceleration = -gravity * 0.85
+                    cell.contents = image
+                    cells.append(cell)
+                }
             }
         }
 
@@ -184,8 +287,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        // Exit after particles settle
-        exitTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { _ in
+        let exitDelay = launchBalloons ? 8.0 : 5.0
+        exitTimer = Timer.scheduledTimer(withTimeInterval: exitDelay, repeats: false) { _ in
             NSApp.terminate(nil)
         }
     }

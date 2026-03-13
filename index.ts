@@ -13,7 +13,7 @@ async function main() {
     chmodSync(tmpPath, 0o755);
 
     // Run the confetti overlay
-    const run = Bun.spawn([tmpPath], {
+    const run = Bun.spawn([tmpPath, ...process.argv.slice(2)], {
       stdout: "inherit",
       stderr: "inherit",
     });
