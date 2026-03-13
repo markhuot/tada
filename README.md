@@ -19,11 +19,3 @@ Available particle mode flags:
 - `--random` Randomly choose confetti, snow, balloons, or fire for each run.
 
 If no particle flag is provided, the default is `--confetti` behavior.
-
-## Balloon mode details
-
-Balloon particles are tuned differently from confetti:
-
-- Balloons rise upward and continue off the top of the screen.
-- Balloons use partially transparent colors from the confetti palette.
-- Balloons include subtle radial gradients with an offset highlight for a more 3D look.
