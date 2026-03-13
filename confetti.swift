@@ -42,6 +42,24 @@ func makeConfettiImage(width: CGFloat, height: CGFloat, color: NSColor) -> CGIma
     return ctx.makeImage()
 }
 
+func makeSnowImage(diameter: CGFloat, color: NSColor) -> CGImage? {
+    let colorSpace = CGColorSpaceCreateDeviceRGB()
+    guard let ctx = CGContext(
+        data: nil,
+        width: Int(diameter),
+        height: Int(diameter),
+        bitsPerComponent: 8,
+        bytesPerRow: 0,
+        space: colorSpace,
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ) else { return nil }
+
+    let rect = CGRect(x: 0, y: 0, width: diameter, height: diameter)
+    ctx.setFillColor(color.cgColor)
+    ctx.fillEllipse(in: rect)
+    return ctx.makeImage()
+}
+
 func makeBalloonImage(width: CGFloat, height: CGFloat, color: NSColor) -> CGImage? {
     let colorSpace = CGColorSpaceCreateDeviceRGB()
     guard let ctx = CGContext(
@@ -260,6 +278,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         case confetti
         case balloons
         case fire
+        case snow
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -268,8 +287,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let args = Set(CommandLine.arguments.dropFirst())
         let mode: ParticleMode
         if args.contains("--random") {
-            let modes: [ParticleMode] = [.confetti, .balloons, .fire]
+            let modes: [ParticleMode] = [.confetti, .balloons, .fire, .snow]
             mode = modes.randomElement() ?? .confetti
+        } else if args.contains("--snow") {
+            mode = .snow
         } else if args.contains("--fire") {
             mode = .fire
         } else if args.contains("--confetti") {
@@ -282,6 +303,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let launchBalloons = mode == .balloons
         let launchFire = mode == .fire
+        let launchSnow = mode == .snow
 
         let screen = NSScreen.main!
         let frame = screen.frame
@@ -308,7 +330,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let emitter = CAEmitterLayer()
-        emitter.emitterPosition = CGPoint(x: frame.width / 2, y: -20)
+        emitter.emitterPosition = CGPoint(x: frame.width / 2, y: launchSnow ? frame.height + 20 : -20)
         emitter.emitterSize = CGSize(width: frame.width, height: 1)
         emitter.emitterShape = .line
         emitter.renderMode = .oldestLast
@@ -431,6 +453,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     )
                 }
             }
+        } else if launchSnow {
+            let snowColor = NSColor(calibratedWhite: 1.0, alpha: 0.95)
+            let targetParticles = frame.width / 5
+            let numShapes: CGFloat = 3
+            let driftVariants: CGFloat = 3
+            let totalCells = numShapes * driftVariants
+            let birthRatePerCell = Float(targetParticles / (emissionDuration * totalCells))
+
+            for diameter in [6.0, 9.0, 12.0] as [CGFloat] {
+                if let image = makeSnowImage(diameter: diameter, color: snowColor) {
+                    for xDrift in [-14.0, 0.0, 14.0] as [CGFloat] {
+                        let cell = CAEmitterCell()
+                        cell.birthRate = birthRatePerCell
+                        cell.lifetime = 12.0
+                        cell.lifetimeRange = 2.0
+                        cell.velocity = 110
+                        cell.velocityRange = 50
+                        cell.emissionLongitude = -CGFloat.pi / 2
+                        cell.emissionRange = CGFloat.pi / 14
+                        cell.xAcceleration = xDrift
+                        cell.yAcceleration = -45
+                        cell.spin = 0.18
+                        cell.spinRange = 0.35
+                        cell.scale = 1.0
+                        cell.scaleRange = 0.25
+                        cell.color = CGColor.white
+                        cell.alphaSpeed = -0.12
+                        cell.contents = image
+                        cells.append(cell)
+                    }
+                }
+            }
         } else {
             // Calculate physics values so confetti peaks at ~75% of screen height.
             let targetHeight = frame.height * 0.75
@@ -495,22 +549,51 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.orderFrontRegardless()
 
         if !launchFire {
-            // Gradually reduce the emitter's birthRate multiplier for a soft ending.
-            // Use an exponential curve so most particles stop early, but a few linger.
-            let steps = 12
-            let rampStart = 0.1
-            let rampEnd = 0.8
-            for i in 0...steps {
-                let t = Double(i) / Double(steps)
-                let rate = Float(pow(1.0 - t, 2.5))
-                let delay = rampStart + (rampEnd - rampStart) * t
-                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                    emitter.birthRate = rate
+            if launchSnow {
+                let emissionWindow: TimeInterval = 5.0
+                let fadeOutDuration: TimeInterval = 2.0
+                let tick: TimeInterval = 0.2
+                let startTime = CACurrentMediaTime()
+                emitter.birthRate = Float.random(in: 0.45...1.2)
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + emissionWindow) {
+                    CATransaction.begin()
+                    CATransaction.setAnimationDuration(fadeOutDuration)
+                    emitter.opacity = 0
+                    CATransaction.commit()
+                }
+
+                Timer.scheduledTimer(withTimeInterval: tick, repeats: true) { timer in
+                    let elapsed = CACurrentMediaTime() - startTime
+                    if elapsed >= emissionWindow {
+                        emitter.birthRate = 0
+                        timer.invalidate()
+                        return
+                    }
+
+                    let lull = Int.random(in: 0...4) == 0
+                    emitter.birthRate = lull
+                        ? Float.random(in: 0.08...0.28)
+                        : Float.random(in: 0.45...1.25)
+                }
+            } else {
+                // Gradually reduce the emitter's birthRate multiplier for a soft ending.
+                // Use an exponential curve so most particles stop early, but a few linger.
+                let steps = 12
+                let rampStart = 0.1
+                let rampEnd = 0.8
+                for i in 0...steps {
+                    let t = Double(i) / Double(steps)
+                    let rate = Float(pow(1.0 - t, 2.5))
+                    let delay = rampStart + (rampEnd - rampStart) * t
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                        emitter.birthRate = rate
+                    }
                 }
             }
         }
 
-        let exitDelay = launchFire ? 3.0 : (launchBalloons ? 8.0 : 5.0)
+        let exitDelay = launchFire ? 3.0 : (launchBalloons ? 8.0 : (launchSnow ? 7.0 : 5.0))
         exitTimer = Timer.scheduledTimer(withTimeInterval: exitDelay, repeats: false) { _ in
             NSApp.terminate(nil)
         }
